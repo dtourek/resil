@@ -1,4 +1,4 @@
-import { Either, isLeft, Left, Maybe } from 'fputils';
+import {Either, isLeft, isRight, Left, Maybe} from 'fputils';
 import { ICache, ICacheRecord, localCache } from '../cache/localCache';
 import { incrementFail, incrementSuccess, setEmptyCache } from '../utils/utils';
 import { promiseMaybe } from "../promise/promise";
@@ -45,7 +45,7 @@ export interface ICircuitBreakerState {
   status: CircuitBreakerState;
 }
 
-const shouldOpen = (cacheValue: ICacheRecord, failRate: ICircuitBreakerConfig['failRate']) => cacheValue.counters.failRate >= failRate;
+const shouldOpenAndRecover = (cacheValue: ICacheRecord, failRate: ICircuitBreakerConfig['failRate']) => cacheValue.counters.failRate >= failRate;
 
 const getOrCreateEmptyCacheRecord = (cache: ICache, key: string, config: ICircuitBreakerConfig): Either<string, ICacheRecord> => {
   const rawCacheValue = cache.get(key);
@@ -55,7 +55,7 @@ const getOrCreateEmptyCacheRecord = (cache: ICache, key: string, config: ICircui
   return rawCacheValue;
 };
 
-const setOpen = (cache: ICache, key: string, cacheValue: ICacheRecord) => cache.set(key, { ...cacheValue, state: { isRecovering: true, status: CircuitBreakerState.open } });
+const setOpenAndRecover = (cache: ICache, key: string, cacheValue: ICacheRecord) => cache.set(key, { ...cacheValue, state: { isRecovering: true, status: CircuitBreakerState.open } });
 
 /**
  * Circuit breaker wrapper for resilient async fetching.
@@ -84,8 +84,8 @@ export const circuitBreaker = (key: string, config: ICircuitBreakerConfig) => {
       }
 
       if (cacheValue.value.state.status === CircuitBreakerState.open) {
-        if (!cacheValue.value.state.isRecovering) {
-          cache.set(key, { ...cacheValue.value, state: { ...cacheValue.value.state, isRecovering: true } });
+        if (cacheValue.value.state.isRecovering) {
+          cache.set(key, { ...cacheValue.value, state: { ...cacheValue.value.state, isRecovering: false } });
           setTimeout(() => {
             cache.set(key, { ...cacheValue.value, state: { isRecovering: false, status: CircuitBreakerState.halfOpen } });
           }, config.switchToHalfOpenIn);
@@ -95,9 +95,9 @@ export const circuitBreaker = (key: string, config: ICircuitBreakerConfig) => {
       }
 
       if (cacheValue.value.state.status === CircuitBreakerState.closed) {
-        if (shouldOpen(cacheValue.value, config.failRate)) {
-          setOpen(cache, key, cacheValue.value);
-          return Left(new Error(`Circuit breaker is on, no more requests are passing for ${config.switchToHalfOpenIn} milliseconds`));
+        if (shouldOpenAndRecover(cacheValue.value, config.failRate)) {
+          setOpenAndRecover(cache, key, cacheValue.value);
+          return Left(new Error(`Circuit breaker has been opened`));
         }
 
         const result = await promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
@@ -113,7 +113,8 @@ export const circuitBreaker = (key: string, config: ICircuitBreakerConfig) => {
       if (cacheValue.value.state.status === CircuitBreakerState.halfOpen) {
         const result = await promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
         if (isLeft(result)) {
-          cache.set(key, { ...cacheValue.value, state: { status: CircuitBreakerState.open, isRecovering: false } });
+          const incremented = incrementFail(cache, key, config.cacheLifetime)
+          setOpenAndRecover(cache, key, isRight(incremented) ? incremented.value : cacheValue.value);
           return result;
         }
 
