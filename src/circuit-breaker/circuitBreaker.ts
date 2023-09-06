@@ -1,12 +1,13 @@
-import {Either, isLeft, isRight, Left, Maybe} from 'fputils';
-import { ICache, ICacheRecord, localCache } from '../cache/localCache';
+import { type Either, isLeft, isRight, Left, type Maybe } from 'fputils';
+import { type ICache, type ICacheRecord, localCache } from '../cache/localCache';
 import { incrementFail, incrementSuccess, setEmptyCache } from '../utils/utils';
-import { promiseMaybe } from "../promise/promise";
-import { ILogger } from "../logger/logger";
+import { promiseMaybe } from '../promise/promise';
+import { type ILogger } from '../logger/logger';
 
 // TODO - apply rules after a treshold has been reached. e.g. 100 hits. Or evaluate after warmup time period
 // TODO - half open state retry count
 // TODO - redo state to semaphore (reg, orange, green) to better understanding of devs
+// TODO - unite Maybe and Either to 1 type everywhere
 
 export enum CircuitBreakerState {
   /**
@@ -23,7 +24,6 @@ export enum CircuitBreakerState {
   halfOpen = 'HalfOpen',
 }
 
-
 export interface ICircuitBreakerConfig {
   /**
    * When Circuit breaker enters Open state, retry availability after amount of seconds. After this time, status is changed from Open to HalfOpen to retest if resource is available.
@@ -37,7 +37,7 @@ export interface ICircuitBreakerConfig {
    * On how many percents switch from Closed(ok) to Open(failing) circuit breaker state.
    */
   failRate: number;
-  logger: ILogger
+  logger: ILogger;
 }
 
 export interface ICircuitBreakerState {
@@ -45,7 +45,13 @@ export interface ICircuitBreakerState {
   status: CircuitBreakerState;
 }
 
-const shouldOpenAndRecover = (cacheValue: ICacheRecord, failRate: ICircuitBreakerConfig['failRate']) => cacheValue.counters.failRate >= failRate;
+export interface ICircuitBreaker {
+  clearCache: () => void;
+  state: () => Either<string, ICacheRecord>;
+  request: <T>(promiseFn: () => Promise<Maybe<T>>, timeout?: number, retryCount?: number) => Promise<Maybe<T>>;
+}
+
+const shouldOpenAndRecover = (cacheValue: ICacheRecord, failRate: ICircuitBreakerConfig['failRate']): boolean => cacheValue.counters.failRate >= failRate;
 
 const getOrCreateEmptyCacheRecord = (cache: ICache, key: string, config: ICircuitBreakerConfig): Either<string, ICacheRecord> => {
   const rawCacheValue = cache.get(key);
@@ -55,7 +61,8 @@ const getOrCreateEmptyCacheRecord = (cache: ICache, key: string, config: ICircui
   return rawCacheValue;
 };
 
-const setOpenAndRecover = (cache: ICache, key: string, cacheValue: ICacheRecord) => cache.set(key, { ...cacheValue, state: { isRecovering: true, status: CircuitBreakerState.open } });
+const setOpenAndRecover = (cache: ICache, key: string, cacheValue: ICacheRecord): Either<string, ICacheRecord> =>
+  cache.set(key, { ...cacheValue, state: { isRecovering: true, status: CircuitBreakerState.open } });
 
 /**
  * Circuit breaker wrapper for resilient async fetching.
@@ -69,18 +76,19 @@ const setOpenAndRecover = (cache: ICache, key: string, cacheValue: ICacheRecord)
  * Retry pattern and timeouts are implemented internally. Configurable via "request" method's parameters.
  * @param {string} key
  * @param {ICircuitBreakerConfig} config
+ * @return {ICircuitBreaker}
  */
-export const circuitBreaker = (key: string, config: ICircuitBreakerConfig) => {
+export const circuitBreaker = (key: string, config: ICircuitBreakerConfig): ICircuitBreaker => {
   const cache = localCache();
 
   return {
     clearCache: cache.clear,
     state: () => getOrCreateEmptyCacheRecord(cache, key, config),
-    request: async <T>(promiseFn: () => Promise<Maybe<T>>, timeout?: number, retryCount?: number): Promise<Maybe<T>> => {
+    request: async (promiseFn, timeout, retryCount) => {
       const cacheValue = getOrCreateEmptyCacheRecord(cache, key, config);
       if (isLeft(cacheValue)) {
         // Fallback if cache is not available
-        return promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
+        return await promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
       }
 
       if (cacheValue.value.state.status === CircuitBreakerState.open) {
@@ -113,7 +121,7 @@ export const circuitBreaker = (key: string, config: ICircuitBreakerConfig) => {
       if (cacheValue.value.state.status === CircuitBreakerState.halfOpen) {
         const result = await promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
         if (isLeft(result)) {
-          const incremented = incrementFail(cache, key, config.cacheLifetime)
+          const incremented = incrementFail(cache, key, config.cacheLifetime);
           setOpenAndRecover(cache, key, isRight(incremented) ? incremented.value : cacheValue.value);
           return result;
         }

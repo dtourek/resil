@@ -1,0 +1,18 @@
+{
+    "extends": ["standard-with-typescript", "prettier"],
+    "plugins": ["prettier"],
+    "rules": {
+      "@typescript-eslint/strict-boolean-expressions": 0,
+      "prefer-promise-reject-errors": 1,
+      "prettier/prettier": ["error",
+        {
+          "printWidth": 180,
+          "trailingComma": "all",
+          "singleQuote": true,
+          "endOfLine": "lf",
+          "semi": true,
+          "tabWidth": 2
+        }
+      ]
+    }
+}

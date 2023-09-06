@@ -1,6 +1,6 @@
-import { isLeft, Maybe, tryCatch } from 'fputils';
+import { isLeft, type Maybe, tryCatch } from 'fputils';
 import { delay } from '../utils/utils';
-import { ILogger } from "../logger/logger";
+import { type ILogger } from '../logger/logger';
 
 const defaultRetryCount = 5;
 const defaultTimeout = 5000;
@@ -13,7 +13,7 @@ export const promise = async <T>(promiseFn: Promise<T>, logger: ILogger, timeout
   } catch (error) {
     if (retryCount > 0) {
       logger.info('Promise timeout, retrying count=' + retryCount);
-      return promise<T>(promiseFn, logger, timeout, retryCount - 1);
+      return await promise<T>(promiseFn, logger, timeout, retryCount - 1);
     }
 
     logger.error('Promise rejected', (error as Error).message);
@@ -22,30 +22,26 @@ export const promise = async <T>(promiseFn: Promise<T>, logger: ILogger, timeout
 };
 
 export const promiseWithMaybe = async <T>(promiseFn: Promise<T>, logger: ILogger, timeout = defaultTimeout, retryCount = defaultRetryCount): Promise<Maybe<T>> =>
-  tryCatch(async () => promise(promiseFn, logger, timeout, retryCount));
+  await tryCatch(async () => await promise(promiseFn, logger, timeout, retryCount));
 
-const timeoutPromise = <T>(timeout: number): Promise<T> =>
-  new Promise(async (_resolve, reject) => {
+const timeoutPromise = async <T>(timeout: number): Promise<T> =>
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises,no-async-promise-executor
+  await new Promise(async (_resolve, reject): Promise<void> => {
     const error = new Error(`Request took too long and timeout after ${timeout}ms`);
     await delay(timeout);
-    return reject(error);
+    reject(error);
   });
 
-const timeoutPromiseMaybe = <T>(timeout: number): Promise<Maybe<T>> => tryCatch(async () => timeoutPromise<T>(timeout))
+const timeoutPromiseMaybe = async <T>(timeout: number): Promise<Maybe<T>> => await tryCatch(async () => await timeoutPromise<T>(timeout));
 
-export const promiseMaybe = async <T>(
-  maybePromiseFn: Promise<Maybe<T>>,
-  logger: ILogger,
-  timeout = defaultTimeout,
-  retryCount = defaultRetryCount,
-): Promise<Maybe<T>> => {
+export const promiseMaybe = async <T>(maybePromiseFn: Promise<Maybe<T>>, logger: ILogger, timeout = defaultTimeout, retryCount = defaultRetryCount): Promise<Maybe<T>> => {
   const result = await Promise.race([timeoutPromiseMaybe<T>(timeout), maybePromiseFn]);
   if (isLeft(result)) {
     logger.error('Promise rejected', result.value.message);
 
     if (retryCount > 0) {
       logger.info('Promise timeout, retrying count=' + retryCount);
-      return promiseMaybe<T>(maybePromiseFn, logger, timeout, retryCount - 1);
+      return await promiseMaybe<T>(maybePromiseFn, logger, timeout, retryCount - 1);
     }
 
     return result;
