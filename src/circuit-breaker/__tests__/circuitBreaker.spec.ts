@@ -99,7 +99,7 @@ describe('circuitBreaker', () => {
     const failedPromiseAfterRecovery = await breaker.request(async () => await failPromise('Oh no, I failed again'));
     const stateAfterRecovery = breaker.state();
     expect(halfOpenState).toMatchObject(Right({ counters: { fail: 1, failRate: 100, success: 0, total: 1 }, state: { isRecovering: false, status: 'HalfOpen' } }));
-    expect(stateAfterRecovery).toMatchObject(Right({ counters: { fail: 2, failRate: 100, success: 0, total: 2 }, state: { isRecovering: true, status: 'Open' } }));
+    expect(stateAfterRecovery).toMatchObject(Right({ counters: { fail: 2, failRate: 100, success: 0, total: 2 }, state: { isRecovering: false, status: 'HalfOpen' } }));
     expect(failedPromiseAfterRecovery).toEqual(Left(Error('Oh no, I failed again')));
   });
 
@@ -119,7 +119,7 @@ describe('circuitBreaker', () => {
     const halfOpenState2 = breaker.state();
 
     expect(halfOpenState).toMatchObject(Right({ counters: { fail: 1, failRate: 100, success: 0, total: 1 }, state: { isRecovering: false, status: 'HalfOpen' } }));
-    expect(halfOpenState2).toMatchObject(Right({ counters: { fail: 2, failRate: 100, success: 0, total: 2 }, state: { isRecovering: false, status: 'HalfOpen' } }));
+    expect(halfOpenState2).toMatchObject(Right({ counters: { fail: 3, failRate: 100, success: 0, total: 3 }, state: { isRecovering: false, status: 'HalfOpen' } }));
   });
 
   it('should recover back from failing state and reset statistics of a counter on success promise', async () => {

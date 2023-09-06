@@ -64,6 +64,13 @@ const getOrCreateEmptyCacheRecord = (cache: ICache, key: string, config: ICircui
 const setOpenAndRecover = (cache: ICache, key: string, cacheValue: ICacheRecord): Either<string, ICacheRecord> =>
   cache.set(key, { ...cacheValue, state: { isRecovering: true, status: CircuitBreakerState.open } });
 
+const toHalfOpenIn = (cache: ICache, key: string, cacheValue: ICacheRecord, switchToHalfOpenIn: ICircuitBreakerConfig['switchToHalfOpenIn']): void => {
+  cache.set(key, { ...cacheValue, state: { ...cacheValue.state, isRecovering: false } });
+  setTimeout(() => {
+    cache.set(key, { ...cacheValue, state: { isRecovering: false, status: CircuitBreakerState.halfOpen } });
+  }, switchToHalfOpenIn);
+};
+
 /**
  * Circuit breaker wrapper for resilient async fetching.
  *
@@ -93,10 +100,7 @@ export const circuitBreaker = (key: string, config: ICircuitBreakerConfig): ICir
 
       if (cacheValue.value.state.status === CircuitBreakerState.open) {
         if (cacheValue.value.state.isRecovering) {
-          cache.set(key, { ...cacheValue.value, state: { ...cacheValue.value.state, isRecovering: false } });
-          setTimeout(() => {
-            cache.set(key, { ...cacheValue.value, state: { isRecovering: false, status: CircuitBreakerState.halfOpen } });
-          }, config.switchToHalfOpenIn);
+          toHalfOpenIn(cache, key, cacheValue.value, config.switchToHalfOpenIn);
         }
 
         return Left(new Error(`Circuit breaker is on for function: "${key}".`));
@@ -122,7 +126,7 @@ export const circuitBreaker = (key: string, config: ICircuitBreakerConfig): ICir
         const result = await promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
         if (isLeft(result)) {
           const incremented = incrementFail(cache, key, config.cacheLifetime);
-          setOpenAndRecover(cache, key, isRight(incremented) ? incremented.value : cacheValue.value);
+          isRight(incremented) && toHalfOpenIn(cache, key, incremented.value, config.switchToHalfOpenIn);
           return result;
         }
 
