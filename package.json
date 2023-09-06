@@ -1,11 +1,12 @@
 {
   "name": "resil",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "build/index.js",
   "packageManager": "yarn@3.6.3",
   "scripts": {
-    "build": "rm -rf build && tsc",
-    "test": "jest"
+    "build": "rm -rf lib && tsc",
+    "test": "jest",
+    "prepublish": "yarn build && yarn test"
   },
   "devDependencies": {
     "@types/jest": "^29.5.4",
