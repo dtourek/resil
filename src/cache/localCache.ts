@@ -1,7 +1,11 @@
-import { Either, Left, Right } from 'fputils';
-import { ICircuitBreakerState } from '../circuit-breaker/circuitBreaker';
+import { type Either, Left, Right } from 'fputils';
+import { type ICircuitBreakerState } from '../circuit-breaker/circuitBreaker';
 
-export type ICache = ReturnType<typeof localCache>;
+export interface ICache {
+  clear: () => void;
+  set: (key: string, value: ICacheRecord) => Either<string, ICacheRecord>;
+  get: (key: string) => Either<string, ICacheRecord>;
+}
 
 export interface ICacheRecord {
   state: ICircuitBreakerState;
@@ -10,14 +14,14 @@ export interface ICacheRecord {
 }
 
 const cache = new Map<string, ICacheRecord>();
-const isExpired = (value: ICacheRecord) => value.expiresAt.valueOf() <= Date.now();
+const isExpired = (value: ICacheRecord): boolean => value.expiresAt.valueOf() <= Date.now();
 
-export const localCache = () => {
+export const localCache = (): ICache => {
   return {
-    clear: (): void => {
+    clear: () => {
       cache.clear();
     },
-    set: (key: string, value: ICacheRecord): Either<string, ICacheRecord> => {
+    set: (key, value) => {
       if (isExpired(value)) {
         return Left('Cannot set value which already expired');
       }
@@ -28,7 +32,7 @@ export const localCache = () => {
       }
       return Right(result);
     },
-    get: (key: string): Either<string, ICacheRecord> => {
+    get: (key) => {
       const value = cache.get(key);
       if (!value) {
         return Left('No value in the cache found');

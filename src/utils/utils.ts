@@ -1,10 +1,10 @@
-import { ICache, ICacheRecord } from '../cache/localCache';
-import { Either, isRight } from 'fputils';
-import { CircuitBreakerState, ICircuitBreakerConfig } from '../circuit-breaker/circuitBreaker';
+import { type ICache, type ICacheRecord } from '../cache/localCache';
+import { type Either, isRight } from 'fputils';
+import { CircuitBreakerState, type ICircuitBreakerConfig } from '../circuit-breaker/circuitBreaker';
 
-export const delay = (ms: number): Promise<void> => {
+export const delay = async (ms: number): Promise<void> => {
   let timer: NodeJS.Timeout | null;
-  return new Promise((resolve) => {
+  await new Promise((resolve) => {
     timer = setTimeout(resolve, ms);
     return timer;
   }).then(() => {
