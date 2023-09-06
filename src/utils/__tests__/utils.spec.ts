@@ -105,7 +105,7 @@ describe('circuit breaker utils', () => {
       incrementFail(cache, cacheKey, cacheLifetime);
       incrementFail(cache, cacheKey, cacheLifetime);
 
-      const result = cache.get(cacheKey);
+      const result = cache.getOne(cacheKey);
       expect(result.value).toMatchObject({ counters: { fail: 4, failRate: 66.67, success: 2, total: 6 } });
     });
   });

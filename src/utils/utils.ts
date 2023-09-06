@@ -29,7 +29,7 @@ export const setEmptyCache = (cache: ICache, key: string, cacheLifetime: ICircui
 const toDecimal = (value: number, decimals: number): number => Number(value.toFixed(decimals));
 
 export const incrementFail = (cache: ICache, key: string, cacheLifetime: ICircuitBreakerConfig['cacheLifetime']): Either<string, ICacheRecord> => {
-  const cacheValue = cache.get(key);
+  const cacheValue = cache.getOne(key);
   if (isRight(cacheValue)) {
     const fail = cacheValue.value.counters.fail + 1;
     const total = cacheValue.value.counters.total + 1;
@@ -40,11 +40,11 @@ export const incrementFail = (cache: ICache, key: string, cacheLifetime: ICircui
       counters: { total, success: cacheValue.value.counters.success, fail, failRate: toDecimal((fail / total) * 100, 2) },
     });
   }
-  return cache.get(key);
+  return cache.getOne(key);
 };
 
 export const incrementSuccess = (cache: ICache, key: string, cacheLifetime: ICircuitBreakerConfig['cacheLifetime']): Either<string, ICacheRecord> => {
-  const cacheValue = cache.get(key);
+  const cacheValue = cache.getOne(key);
   if (isRight(cacheValue)) {
     cache.set(key, {
       ...cacheValue.value,
@@ -58,5 +58,5 @@ export const incrementSuccess = (cache: ICache, key: string, cacheLifetime: ICir
     });
   }
 
-  return cache.get(key);
+  return cache.getOne(key);
 };
