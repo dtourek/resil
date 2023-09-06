@@ -8,9 +8,9 @@ describe('localCache', () => {
     jest.clearAllMocks();
   });
 
-  describe('get', () => {
+  describe('getOne', () => {
     it('cannot get a value if cache is empty', () => {
-      expect(localCache().get('a')).toEqual(Left('No value in the cache found'));
+      expect(localCache().getOne('a')).toEqual(Left('No value in the cache found'));
     });
 
     it('should return error when requesting another key', () => {
@@ -21,7 +21,7 @@ describe('localCache', () => {
         counters: { total: 123, fail: 0, failRate: 30, success: 20 },
         state: { isRecovering: true, status: CircuitBreakerState.open },
       });
-      expect(localCache().get('note-55')).toEqual(Left('No value in the cache found'));
+      expect(localCache().getOne('note-55')).toEqual(Left('No value in the cache found'));
     });
 
     it('should not return value if is expired and it should be removed from the cache', () => {
@@ -34,8 +34,8 @@ describe('localCache', () => {
 
       // Sets current date to day after tomorrow value
       Date.now = jest.fn(() => dayAfterTomorrow.valueOf());
-      expect(localCache().get(key)).toEqual(Left('Value from the cache expired'));
-      expect(localCache().get(key)).toEqual(Left('No value in the cache found'));
+      expect(localCache().getOne(key)).toEqual(Left('Value from the cache expired'));
+      expect(localCache().getOne(key)).toEqual(Left('No value in the cache found'));
     });
 
     it('should return a cache value correctly', () => {
@@ -57,9 +57,76 @@ describe('localCache', () => {
         counters: { total: 999, fail: 0, failRate: 30, success: 20 },
         state: { isRecovering: true, status: CircuitBreakerState.open },
       });
-      expect(localCache().get(updatedKey)).toMatchObject(
+      expect(localCache().getOne(updatedKey)).toMatchObject(
         Right({ counters: { total: 999, fail: 0, failRate: 30, success: 20 }, state: { isRecovering: true, status: CircuitBreakerState.open } }),
       );
+    });
+  });
+
+  describe('getAll', () => {
+    beforeEach(() => {
+      localCache().clear();
+    });
+    afterAll(() => {
+      localCache().clear();
+    });
+
+    it('should return empty object', () => {
+      expect(localCache().getAll()).toEqual({});
+    });
+
+    it('should return 1 result', () => {
+      const now = new Date();
+      const tomorrow = new Date(now.setDate(now.getDate() + 1));
+      const updatedKey = 'nightswatch';
+
+      localCache().set(updatedKey, {
+        expiresAt: tomorrow,
+        counters: { total: 999, fail: 0, failRate: 30, success: 20 },
+        state: { isRecovering: true, status: CircuitBreakerState.open },
+      });
+      expect(localCache().getAll()).toMatchObject({ nightswatch: { counters: { fail: 0, failRate: 30, success: 20, total: 999 }, state: { isRecovering: true, status: 'Open' } } });
+    });
+
+    it('should return last update when same key is used', () => {
+      const now = new Date();
+      const tomorrow = new Date(now.setDate(now.getDate() + 1));
+
+      localCache().set('noone', {
+        expiresAt: tomorrow,
+        counters: { total: 1, fail: 0, failRate: 3, success: 2 },
+        state: { isRecovering: true, status: CircuitBreakerState.open },
+      });
+
+      localCache().set('noone', {
+        expiresAt: tomorrow,
+        counters: { total: 5, fail: 55, failRate: 1, success: 9 },
+        state: { isRecovering: true, status: CircuitBreakerState.open },
+      });
+
+      expect(localCache().getAll()).toMatchObject({ noone: { counters: { fail: 55, failRate: 1, success: 9, total: 5 }, state: { isRecovering: true, status: 'Open' } } });
+    });
+
+    it('should return all when multiple records exist', () => {
+      const now = new Date();
+      const tomorrow = new Date(now.setDate(now.getDate() + 1));
+
+      localCache().set('winter-is-coming', {
+        expiresAt: tomorrow,
+        counters: { total: 1, fail: 0, failRate: 3, success: 2 },
+        state: { isRecovering: true, status: CircuitBreakerState.open },
+      });
+
+      localCache().set('winter-is-here', {
+        expiresAt: tomorrow,
+        counters: { total: 5, fail: 55, failRate: 1, success: 9 },
+        state: { isRecovering: true, status: CircuitBreakerState.open },
+      });
+
+      expect(localCache().getAll()).toMatchObject({
+        'winter-is-coming': { counters: { success: 2, total: 1 }, state: { isRecovering: true, status: 'Open' } },
+        'winter-is-here': { counters: { success: 9, total: 5 }, state: { isRecovering: true, status: 'Open' } },
+      });
     });
   });
 

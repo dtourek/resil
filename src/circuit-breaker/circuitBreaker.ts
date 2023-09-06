@@ -24,6 +24,11 @@ export enum CircuitBreakerState {
   halfOpen = 'HalfOpen',
 }
 
+interface IPromiseOptions {
+  timeout?: number;
+  retryCount?: number;
+}
+
 export interface ICircuitBreakerConfig {
   /**
    * When Circuit breaker enters Open state, retry availability after amount of seconds. After this time, status is changed from Open to HalfOpen to retest if resource is available.
@@ -38,6 +43,7 @@ export interface ICircuitBreakerConfig {
    */
   failRate: number;
   logger: ILogger;
+  promiseOptions?: IPromiseOptions;
 }
 
 export interface ICircuitBreakerState {
@@ -47,16 +53,17 @@ export interface ICircuitBreakerState {
 
 export interface ICircuitBreaker {
   clearCache: () => void;
-  state: () => Either<string, ICacheRecord>;
-  request: <T>(promiseFn: () => Promise<Maybe<T>>, timeout?: number, retryCount?: number) => Promise<Maybe<T>>;
+  state: (key: string) => Either<string, ICacheRecord>;
+  stateAll: () => any;
+  request: <T>(key: string, promiseFn: () => Promise<Maybe<T>>, options?: IPromiseOptions) => Promise<Maybe<T>>;
 }
 
 const shouldOpenAndRecover = (cacheValue: ICacheRecord, failRate: ICircuitBreakerConfig['failRate']): boolean => cacheValue.counters.failRate >= failRate;
 
-const getOrCreateEmptyCacheRecord = (cache: ICache, key: string, config: ICircuitBreakerConfig): Either<string, ICacheRecord> => {
-  const rawCacheValue = cache.get(key);
+const getOrCreateEmptyCacheRecord = (cache: ICache, key: string, options: ICircuitBreakerConfig): Either<string, ICacheRecord> => {
+  const rawCacheValue = cache.getOne(key);
   if (isLeft(rawCacheValue)) {
-    return setEmptyCache(cache, key, config.cacheLifetime);
+    return setEmptyCache(cache, key, options.cacheLifetime);
   }
   return rawCacheValue;
 };
@@ -81,21 +88,21 @@ const toHalfOpenIn = (cache: ICache, key: string, cacheValue: ICacheRecord, swit
  * When on closed state, all requests are passed through
  *
  * Retry pattern and timeouts are implemented internally. Configurable via "request" method's parameters.
- * @param {string} key
  * @param {ICircuitBreakerConfig} config
  * @return {ICircuitBreaker}
  */
-export const circuitBreaker = (key: string, config: ICircuitBreakerConfig): ICircuitBreaker => {
+export const circuitBreaker = (config: ICircuitBreakerConfig): ICircuitBreaker => {
   const cache = localCache();
 
   return {
     clearCache: cache.clear,
-    state: () => getOrCreateEmptyCacheRecord(cache, key, config),
-    request: async (promiseFn, timeout, retryCount) => {
+    state: (key) => getOrCreateEmptyCacheRecord(cache, key, config),
+    stateAll: cache.getAll,
+    request: async (key, promiseFn, options) => {
       const cacheValue = getOrCreateEmptyCacheRecord(cache, key, config);
       if (isLeft(cacheValue)) {
         // Fallback if cache is not available
-        return await promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
+        return await promiseMaybe(promiseFn(), config.logger, options?.timeout ?? config.promiseOptions?.timeout, options?.retryCount ?? config.promiseOptions?.retryCount);
       }
 
       if (cacheValue.value.state.status === CircuitBreakerState.open) {
@@ -112,7 +119,7 @@ export const circuitBreaker = (key: string, config: ICircuitBreakerConfig): ICir
           return Left(new Error(`Circuit breaker has been opened`));
         }
 
-        const result = await promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
+        const result = await promiseMaybe(promiseFn(), config.logger, options?.timeout ?? config.promiseOptions?.timeout, options?.retryCount ?? config.promiseOptions?.retryCount);
         if (isLeft(result)) {
           incrementFail(cache, key, config.cacheLifetime);
           return result;
@@ -123,7 +130,7 @@ export const circuitBreaker = (key: string, config: ICircuitBreakerConfig): ICir
       }
 
       if (cacheValue.value.state.status === CircuitBreakerState.halfOpen) {
-        const result = await promiseMaybe(promiseFn(), config.logger, timeout, retryCount);
+        const result = await promiseMaybe(promiseFn(), config.logger, options?.timeout ?? config.promiseOptions?.timeout, options?.retryCount ?? config.promiseOptions?.retryCount);
         if (isLeft(result)) {
           const incremented = incrementFail(cache, key, config.cacheLifetime);
           isRight(incremented) && toHalfOpenIn(cache, key, incremented.value, config.switchToHalfOpenIn);
