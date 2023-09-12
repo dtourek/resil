@@ -4,7 +4,7 @@ import { incrementFail, incrementSuccess, setEmptyCache } from '../utils/utils';
 import { promiseMaybe } from '../promise/promise';
 import { type ILogger } from '../logger/logger';
 
-// TODO - apply rules after a treshold has been reached. e.g. 100 hits. Or evaluate after warmup time period
+// TODO - warmup - apply rules after a treshold has been reached. e.g. 100 hits. Or evaluate after a time period
 // TODO - half open state retry count
 // TODO - redo state to semaphore (reg, orange, green) to better understanding of devs
 // TODO - unite Maybe and Either to 1 type everywhere
@@ -53,9 +53,9 @@ export interface ICircuitBreakerState {
 
 export interface ICircuitBreaker {
   clearCache: () => void;
-  state: (key: string) => Either<string, ICacheRecord>;
+  state: () => Either<string, ICacheRecord>;
   stateAll: () => any;
-  request: <T>(key: string, promiseFn: () => Promise<Maybe<T>>, options?: IPromiseOptions) => Promise<Maybe<T>>;
+  request: <T>(promiseFn: () => Promise<Maybe<T>>, options?: IPromiseOptions) => Promise<Maybe<T>>;
 }
 
 const shouldOpenAndRecover = (cacheValue: ICacheRecord, failRate: ICircuitBreakerConfig['failRate']): boolean => cacheValue.counters.failRate >= failRate;
@@ -88,17 +88,17 @@ const toHalfOpenIn = (cache: ICache, key: string, cacheValue: ICacheRecord, swit
  * When on closed state, all requests are passed through
  *
  * Retry pattern and timeouts are implemented internally. Configurable via "request" method's parameters.
- * @param {ICircuitBreakerConfig} config
  * @return {ICircuitBreaker}
+ * @param key
  */
-export const circuitBreaker = (config: ICircuitBreakerConfig): ICircuitBreaker => {
+export const circuitBreaker = (key: string, config: ICircuitBreakerConfig): ICircuitBreaker => {
   const cache = localCache();
 
   return {
     clearCache: cache.clear,
-    state: (key) => getOrCreateEmptyCacheRecord(cache, key, config),
+    state: () => getOrCreateEmptyCacheRecord(cache, key, config),
     stateAll: cache.getAll,
-    request: async (key, promiseFn, options) => {
+    request: async (promiseFn, options) => {
       const cacheValue = getOrCreateEmptyCacheRecord(cache, key, config);
       if (isLeft(cacheValue)) {
         // Fallback if cache is not available
