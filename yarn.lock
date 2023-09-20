@@ -983,10 +983,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^20.5.9":
-  version: 20.5.9
-  resolution: "@types/node@npm:20.5.9"
-  checksum: 717490e94131722144878b4ca1a963ede1673bb8f2ef78c2f5b50b918df6dc9b35e7f8283e5c2a7a9f137730f7c08dc6228e53d4494a94c9ee16881e6ce6caed
+"@types/node@npm:^20.6.3":
+  version: 20.6.3
+  resolution: "@types/node@npm:20.6.3"
+  checksum: 444a6f1f41cfa8d3e20ce0108e6e43960fb2ae0e481f233bb1c14d6252aa63a92e021de561cd317d9fdb411688f871065f40175a1f18763282dee2613a08f8a3
   languageName: node
   linkType: hard
 
@@ -4690,7 +4690,7 @@ __metadata:
   resolution: "resil@workspace:."
   dependencies:
     "@types/jest": ^29.5.4
-    "@types/node": ^20.5.9
+    "@types/node": ^20.6.3
     "@typescript-eslint/eslint-plugin": ^6.4.0
     eslint: ^8.0.1
     eslint-config-prettier: ^9.0.0
